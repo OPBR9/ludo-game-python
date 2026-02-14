@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simplified Ludo Game</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f5f5f5;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      margin-top: 1em;
+      color: #333;
+    }
+    #setup {
+      margin-top: 1em;
+      padding: 1em;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    #setup input {
+      margin: 0.5em 0;
+      padding: 0.5em;
+      width: 200px;
+    }
+    #setup button {
+      padding: 0.5em 1em;
+      font-size: 1rem;
+    }
+    #game {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 1em;
+    }
+    #board {
+      display: grid;
+      grid-template-columns: repeat(13, 40px);
+      grid-template-rows: repeat(4, 40px);
+      gap: 2px;
+      margin-top: 1em;
+    }
+    .cell {
+      width: 40px;
+      height: 40px;
+      border: 1px solid #ccc;
+      background-color: #fafafa;
+      position: relative;
+    }
+    .token {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      color: #fff;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.8rem;
+      position: absolute;
+      top: 5px;
+      left: 5px;
+    }
+    #controls {
+      margin-top: 1em;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #current-player {
+      font-weight: bold;
+      margin-bottom: 0.5em;
+    }
+    #dice-result {
+      font-size: 1.5rem;
+      margin: 0.5em 0;
+    }
+    #messages {
+      margin-top: 1em;
+      color: #555;
+      min-height: 1.5em;
+    }
+  </style>
+</head>
+<body>
+  <h1>Simplified Ludo Game</h1>
+  <div id="setup">
+    <label for="numPlayers">Number of players (2–4): </label>
+    <select id="numPlayers">
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+    </select><br>
+    <div id="names"></div>
+    <button id="startBtn">Start Game</button>
+  </div>
+
+  <div id="game">
+    <div id="controls">
+      <div id="current-player"></div>
+      <button id="rollBtn">Roll Die</button>
+      <div id="dice-result"></div>
+    </div>
+    <div id="board"></div>
+    <div id="messages"></div>
+  </div>
+
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const numPlayersSelect = document.getElementById('numPlayers');
+    const namesDiv = document.getElementById('names');
+    const gameDiv = document.getElementById('game');
+    const boardDiv = document.getElementById('board');
+    const currentPlayerDiv = document.getElementById('current-player');
+    const rollBtn = document.getElementById('rollBtn');
+    const diceResultDiv = document.getElementById('dice-result');
+    const messagesDiv = document.getElementById('messages');
+
+    // Colors for up to 4 players
+    const playerColors = ['#e74c3c', '#2ecc71', '#3498db', '#f1c40f'];
+
+    // Player and game state
+    let players = [];
+    let currentIndex = 0;
+    const boardLength = 52;
+    const startPositions = [0, 13, 26, 39];
+    let gameActive = false;
+
+    // Create name inputs based on number of players
+    numPlayersSelect.addEventListener('change', () => {
+      generateNameInputs();
+    });
+
+    function generateNameInputs() {
+      const num = parseInt(numPlayersSelect.value);
+      namesDiv.innerHTML = '';
+      for (let i = 0; i < num; i++) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.id = 'name-' + i;
+        input.placeholder = 'Player ' + (i + 1) + ' name';
+        namesDiv.appendChild(input);
+        namesDiv.appendChild(document.createElement('br'));
+      }
+    }
+
+    // Initialize name inputs on load
+    generateNameInputs();
+
+    startBtn.addEventListener('click', startGame);
+    rollBtn.addEventListener('click', handleRoll);
+
+    function startGame() {
+      const numPlayers = parseInt(numPlayersSelect.value);
+      players = [];
+      for (let i = 0; i < numPlayers; i++) {
+        const nameInput = document.getElementById('name-' + i);
+        const name = nameInput.value.trim() || 'Player ' + (i + 1);
+        players.push({
+          name: name,
+          color: playerColors[i],
+          step: -1 // -1 means in yard
+        });
+      }
+      currentIndex = 0;
+      gameActive = true;
+      // Hide setup and show game
+      document.getElementById('setup').style.display = 'none';
+      gameDiv.style.display = 'flex';
+      createBoard();
+      updateBoardDisplay();
+      updateCurrentPlayerDisplay();
+      messagesDiv.textContent = '';
+    }
+
+    function createBoard() {
+      boardDiv.innerHTML = '';
+      for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 13; col++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          // Determine index using serpentine mapping
+          const index = row * 13 + col;
+          cell.dataset.index = index;
+          cell.id = 'cell-' + index;
+          boardDiv.appendChild(cell);
+        }
+      }
+    }
+
+    function serpentinePos(index) {
+      const row = Math.floor(index / 13);
+      const colInRow = index % 13;
+      let col;
+      if (row % 2 === 0) {
+        // even row: left to right
+        col = colInRow;
+      } else {
+        // odd row: right to left
+        col = 12 - colInRow;
+      }
+      return { row, col };
+    }
+
+    function getAbsolutePosition(player) {
+      if (player.step < 0 || player.step >= boardLength) return -1;
+      return (startPositions[players.indexOf(player)] + player.step) % boardLength;
+    }
+
+    function updateBoardDisplay() {
+      // Clear all tokens
+      document.querySelectorAll('.token').forEach(token => token.remove());
+      players.forEach(player => {
+        const absPos = getAbsolutePosition(player);
+        if (absPos >= 0) {
+          const cell = document.getElementById('cell-' + absPos);
+          if (cell) {
+            const tokenDiv = document.createElement('div');
+            tokenDiv.className = 'token';
+            tokenDiv.style.backgroundColor = player.color;
+            tokenDiv.textContent = player.name[0].toUpperCase();
+            cell.appendChild(tokenDiv);
+          }
+        }
+      });
+    }
+
+    function updateCurrentPlayerDisplay() {
+      const player = players[currentIndex];
+      currentPlayerDiv.textContent = `${player.name}'s turn`;
+    }
+
+    function handleRoll() {
+      if (!gameActive) return;
+      const player = players[currentIndex];
+      // If player has finished, skip
+      if (player.step >= boardLength) {
+        // Move to next player
+        currentIndex = (currentIndex + 1) % players.length;
+        updateCurrentPlayerDisplay();
+        handleRoll();
+        return;
+      }
+      const roll = Math.floor(Math.random() * 6) + 1;
+      diceResultDiv.textContent = `You rolled a ${roll}`;
+      messagesDiv.textContent = '';
+      let extraTurn = false;
+
+      if (player.step < 0) {
+          // in yard
+          if (roll === 6) {
+            player.step = 0;
+            messagesDiv.textContent = `${player.name} rolled a 6 and moved out of the yard!`;
+            extraTurn = true;
+          } else {
+            messagesDiv.textContent = `${player.name}'s token is still in the yard. You need a 6 to move out.`;
+          }
+      } else {
+          const proposed = player.step + roll;
+          if (proposed > boardLength) {
+            messagesDiv.textContent = `${player.name} cannot move because you'd overshoot the finish.`;
+          } else if (proposed === boardLength) {
+            player.step = boardLength;
+            messagesDiv.textContent = `${player.name} has completed a full lap and wins the game!`;
+            gameActive = false;
+            rollBtn.disabled = true;
+          } else {
+            player.step = proposed;
+            // Capture logic
+            const absPos = getAbsolutePosition(player);
+            for (const other of players) {
+              if (other === player) continue;
+              const otherPos = getAbsolutePosition(other);
+              if (otherPos === absPos && other.step >= 0 && other.step < boardLength) {
+                other.step = -1;
+                messagesDiv.textContent = `${player.name} captured ${other.name}'s token!`;
+                break;
+              }
+            }
+            if (roll === 6) {
+              extraTurn = true;
+            }
+          }
+      }
+      updateBoardDisplay();
+      if (!gameActive) return;
+      if (!extraTurn) {
+        currentIndex = (currentIndex + 1) % players.length;
+      }
+      updateCurrentPlayerDisplay();
+    }
+  </script>
+</body>
+</html>
