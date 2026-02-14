@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Full Ludo Game (Web Version)</title>
+  <style>
+    /*
+      Full Ludo game implemented in vanilla JavaScript.  This page
+      supports 2–4 players, each with four tokens, and loosely follows
+      traditional Ludo rules.  Players must roll a six to exit the yard,
+      then move around a track of 52 squares before entering a home
+      stretch of six squares.  Capturing opponents, safe squares and
+      extra turns on a six are supported.  The UI is deliberately
+      simple: the board is a 4×13 serpentine grid and the tokens are
+      coloured circles labelled 1–4 for each player.  This is not a
+      perfect recreation of the classic board (which has a cross‑shaped
+      15×15 grid), but it allows you to play a full game in the browser
+      without installing anything.
+    */
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f5f5f5;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    h1 {
+      margin-top: 1em;
+      color: #333;
+    }
+    #setup {
+      margin-top: 1em;
+      padding: 1em;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    #setup input {
+      margin: 0.5em 0;
+      padding: 0.5em;
+      width: 200px;
+    }
+    #setup button {
+      padding: 0.5em 1em;
+      font-size: 1rem;
+    }
+    #game {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 1em;
+    }
+    #board {
+      display: grid;
+      grid-template-columns: repeat(13, 50px);
+      grid-template-rows: repeat(4, 50px);
+      gap: 2px;
+      margin-top: 1em;
+    }
+    .cell {
+      width: 50px;
+      height: 50px;
+      border: 1px solid #ccc;
+      background-color: #fafafa;
+      position: relative;
+    }
+    .token {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      color: #fff;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      position: absolute;
+    }
+    #controls {
+      margin-top: 1em;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #current-player {
+      font-weight: bold;
+      margin-bottom: 0.5em;
+    }
+    #dice-result {
+      font-size: 1.5rem;
+      margin: 0.5em 0;
+    }
+    #messages {
+      margin-top: 1em;
+      color: #555;
+      min-height: 1.5em;
+    }
+    #scoreboard {
+      margin-top: 1em;
+      padding: 0.5em;
+      background-color: #fff;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  <h1>Full Ludo Game</h1>
+  <div id="setup">
+    <label for="numPlayersFull">Number of players (2–4): </label>
+    <select id="numPlayersFull">
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+    </select><br>
+    <div id="namesFull"></div>
+    <button id="startBtnFull">Start Game</button>
+  </div>
+  <div id="game">
+    <div id="controls">
+      <div id="current-player"></div>
+      <button id="rollBtn">Roll Die</button>
+      <div id="dice-result"></div>
+    </div>
+    <div id="board"></div>
+    <div id="messages"></div>
+    <div id="scoreboard"></div>
+  </div>
+  <script>
+    const startBtnFull = document.getElementById('startBtnFull');
+    const numPlayersSelectFull = document.getElementById('numPlayersFull');
+    const namesDivFull = document.getElementById('namesFull');
+    const gameDiv = document.getElementById('game');
+    const boardDiv = document.getElementById('board');
+    const currentPlayerDiv = document.getElementById('current-player');
+    const rollBtn = document.getElementById('rollBtn');
+    const diceResultDiv = document.getElementById('dice-result');
+    const messagesDiv = document.getElementById('messages');
+    const scoreboardDiv = document.getElementById('scoreboard');
+
+    // Colours for up to 4 players
+    const playerColors = ['#e74c3c', '#2ecc71', '#3498db', '#f1c40f'];
+
+    // Game constants
+    const boardLength = 52; // number of squares on main track
+    const homeLength = 6;   // number of squares in home column
+    const startPositions = [0, 13, 26, 39];
+    // Safe squares: starting squares and 8 spaces ahead
+    const safePositions = new Set([...startPositions, ...startPositions.map(p => (p + 8) % boardLength)]);
+
+    // Players and game state
+    let players = [];
+    let currentIndex = 0;
+    let gameActive = false;
+
+    // Generate name inputs based on number of players
+    numPlayersSelectFull.addEventListener('change', generateNameInputs);
+
+    function generateNameInputs() {
+      const num = parseInt(numPlayersSelectFull.value);
+      namesDivFull.innerHTML = '';
+      for (let i = 0; i < num; i++) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.id = 'name-full-' + i;
+        input.placeholder = 'Player ' + (i + 1) + ' name';
+        namesDivFull.appendChild(input);
+        namesDivFull.appendChild(document.createElement('br'));
+      }
+    }
+    // Initialize names inputs on load
+    generateNameInputs();
+
+    startBtnFull.addEventListener('click', startGame);
+    rollBtn.addEventListener('click', handleRoll);
+
+    function startGame() {
+      const numPlayers = parseInt(numPlayersSelectFull.value);
+      players = [];
+      for (let i = 0; i < numPlayers; i++) {
+        const nameInput = document.getElementById('name-full-' + i);
+        const name = nameInput.value.trim() || 'Player ' + (i + 1);
+        const tokens = [];
+        for (let t = 0; t < 4; t++) {
+          tokens.push({ step: -1 });
+        }
+        players.push({
+          name: name,
+          color: playerColors[i],
+          startIndex: startPositions[i],
+          homeEntry: (startPositions[i] + boardLength - 1) % boardLength,
+          tokens: tokens
+        });
+      }
+      currentIndex = 0;
+      gameActive = true;
+      // Hide setup, show game
+      document.getElementById('setup').style.display = 'none';
+      gameDiv.style.display = 'flex';
+      createBoard();
+      updateBoardDisplay();
+      updateScoreboard();
+      updateCurrentPlayerDisplay();
+      messagesDiv.textContent = '';
+      diceResultDiv.textContent = '';
+      rollBtn.disabled = false;
+    }
+
+    function createBoard() {
+      boardDiv.innerHTML = '';
+      for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 13; col++) {
+          const cell = document.createElement('div');
+          cell.className = 'cell';
+          const index = row * 13 + col;
+          cell.dataset.index = index;
+          cell.id = 'cell-full-' + index;
+          boardDiv.appendChild(cell);
+        }
+      }
+    }
+
+    function getAbsolutePosition(player, token) {
+      if (token.step < 0 || token.step >= boardLength) return null;
+      return (player.startIndex + token.step) % boardLength;
+    }
+
+    function updateBoardDisplay() {
+      // Clear all token elements
+      document.querySelectorAll('.token').forEach(tok => tok.remove());
+      // Map to count how many tokens at each board index for offsetting
+      const occupantCounts = {};
+      players.forEach(player => {
+        player.tokens.forEach(token => {
+          const absPos = getAbsolutePosition(player, token);
+          if (absPos !== null) {
+            occupantCounts[absPos] = (occupantCounts[absPos] || 0) + 1;
+          }
+        });
+      });
+      // Reset occupant offset counters
+      const occupantOffsets = {};
+      players.forEach((player, pIdx) => {
+        player.tokens.forEach((token, tIdx) => {
+          const absPos = getAbsolutePosition(player, token);
+          if (absPos === null) return;
+          const cell = document.getElementById('cell-full-' + absPos);
+          if (cell) {
+            if (!occupantOffsets[absPos]) occupantOffsets[absPos] = 0;
+            const offsetIndex = occupantOffsets[absPos]++;
+            const tokenDiv = document.createElement('div');
+            tokenDiv.className = 'token';
+            tokenDiv.style.backgroundColor = player.color;
+            tokenDiv.textContent = (tIdx + 1); // label token 1–4
+            // compute offset positions: spread tokens in a 2x2 grid within cell
+            const maxPerCell = Math.max(occupantCounts[absPos], 1);
+            const rowOffset = Math.floor(offsetIndex / 2);
+            const colOffset = offsetIndex % 2;
+            tokenDiv.style.top = 5 + rowOffset * 22 + 'px';
+            tokenDiv.style.left = 5 + colOffset * 22 + 'px';
+            cell.appendChild(tokenDiv);
+          }
+        });
+      });
+    }
+
+    function updateScoreboard() {
+      // Display each player's number of finished tokens
+      scoreboardDiv.innerHTML = '';
+      players.forEach(player => {
+        const finished = player.tokens.filter(tok => tok.step === boardLength + homeLength - 1).length;
+        const div = document.createElement('div');
+        div.textContent = `${player.name}: ${finished} of 4 tokens finished`;
+        div.style.color = player.color;
+        scoreboardDiv.appendChild(div);
+      });
+    }
+
+    function updateCurrentPlayerDisplay() {
+      const player = players[currentIndex];
+      currentPlayerDiv.textContent = `${player.name}'s turn`;
+    }
+
+    function getBoardOccupants() {
+      const occupants = {};
+      players.forEach((player, pIdx) => {
+        player.tokens.forEach((tok, tIdx) => {
+          const absPos = getAbsolutePosition(player, tok);
+          if (absPos !== null) {
+            if (!occupants[absPos]) occupants[absPos] = [];
+            occupants[absPos].push({ pIdx, tIdx });
+          }
+        });
+      });
+      return occupants;
+    }
+
+    function getValidTokensForRoll(playerIndex, roll) {
+      const player = players[playerIndex];
+      const occupants = getBoardOccupants();
+      const valid = [];
+      player.tokens.forEach((tok, idx) => {
+        if (tok.step === boardLength + homeLength - 1) {
+          return; // finished
+        }
+        if (tok.step < 0) {
+          // token in yard
+          if (roll !== 6) return;
+          const destStep = 0;
+          const destAbs = player.startIndex;
+          // cannot land on own token at start
+          const blocked = player.tokens.some((other, j) => j !== idx && other.step >= 0 && other.step < boardLength && getAbsolutePosition(player, other) === destAbs);
+          if (blocked) return;
+          valid.push(idx);
+        } else {
+          const destStep = tok.step + roll;
+          // overshoot beyond final home square
+          if (destStep > boardLength + homeLength - 1) return;
+          if (destStep < boardLength) {
+            // moving on main track
+            const destAbs = (player.startIndex + destStep) % boardLength;
+            // check safe square
+            if (safePositions.has(destAbs)) {
+              // safe square: always valid
+              valid.push(idx);
+              return;
+            }
+            const occ = occupants[destAbs] || [];
+            // blocked if you occupy or stack >1
+            const blockedBySelf = occ.some(o => o.pIdx === playerIndex);
+            if (blockedBySelf) return;
+            if (occ.length > 1) return;
+            valid.push(idx);
+          } else {
+            // moving into home column (steps 52–57)
+            // allow stacking in home; must land exactly on final square
+            valid.push(idx);
+          }
+        }
+      });
+      return valid;
+    }
+
+    function handleRoll() {
+      if (!gameActive) return;
+      const player = players[currentIndex];
+      // skip player if all tokens finished
+      const allFinished = player.tokens.every(tok => tok.step === boardLength + homeLength - 1);
+      if (allFinished) {
+        // move to next player
+        currentIndex = (currentIndex + 1) % players.length;
+        updateCurrentPlayerDisplay();
+        handleRoll();
+        return;
+      }
+      const roll = Math.floor(Math.random() * 6) + 1;
+      diceResultDiv.textContent = `You rolled a ${roll}`;
+      messagesDiv.textContent = '';
+      let extraTurn = false;
+      // Determine valid tokens
+      const validTokens = getValidTokensForRoll(currentIndex, roll);
+      if (validTokens.length === 0) {
+        messagesDiv.textContent = `${player.name} cannot move any token.`;
+        if (roll === 6) extraTurn = true;
+      } else {
+        // for simplicity choose first valid token
+        const tokenIndex = validTokens[0];
+        const tok = player.tokens[tokenIndex];
+        let captured = false;
+        if (tok.step < 0) {
+          // leaving yard
+          tok.step = 0;
+          messagesDiv.textContent = `${player.name} moved token ${tokenIndex + 1} out of the yard.`;
+          extraTurn = true;
+        } else {
+          const destStep = tok.step + roll;
+          if (destStep < boardLength) {
+            const destAbs = (player.startIndex + destStep) % boardLength;
+            // capture logic if not safe
+            if (!safePositions.has(destAbs)) {
+              const occupants = getBoardOccupants()[destAbs] || [];
+              if (occupants.length === 1) {
+                const opp = occupants[0];
+                if (opp.pIdx !== currentIndex) {
+                  // send opponent's token back to yard
+                  const oppTok = players[opp.pIdx].tokens[opp.tIdx];
+                  oppTok.step = -1;
+                  captured = true;
+                  messagesDiv.textContent = `${player.name} captured ${players[opp.pIdx].name}'s token!`;
+                }
+              }
+            }
+            tok.step = destStep;
+          } else {
+            // moving into home column
+            tok.step = destStep;
+            if (destStep === boardLength + homeLength - 1) {
+              messagesDiv.textContent = `${player.name}'s token ${tokenIndex + 1} reached home!`;
+            }
+          }
+          if (roll === 6 || captured) extraTurn = true;
+        }
+      }
+      updateBoardDisplay();
+      updateScoreboard();
+      // check victory condition
+      if (players.some(p => p.tokens.every(tok => tok.step === boardLength + homeLength - 1))) {
+        const winner = players.find(p => p.tokens.every(tok => tok.step === boardLength + homeLength - 1));
+        messagesDiv.textContent = `${winner.name} wins the game!`;
+        gameActive = false;
+        rollBtn.disabled = true;
+        updateCurrentPlayerDisplay();
+        return;
+      }
+      if (!extraTurn) {
+        currentIndex = (currentIndex + 1) % players.length;
+      }
+      updateCurrentPlayerDisplay();
+    }
+  </script>
+</body>
+</html>
