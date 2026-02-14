@@ -91,6 +91,16 @@
 </head>
 <body>
   <h1>Simplified Ludo Game</h1>
+  <!-- Display the reference Ludo board image below the title.  This allows
+       players to see the classic board design with coloured quadrants and safe
+       squares.  The actual game board rendered below remains a simplified
+       grid for now. -->
+  <div id="board-image-container" style="margin-top: 1em;">
+    <!-- Use the board image that was uploaded to the repository (file name may
+         appear as a UUID).  Display it as a reference for the classic Ludo
+         board design. -->
+    <img src="229D3739-0843-44F5-A47E-2B114CAB3D49.jpeg" alt="Reference Ludo board" style="max-width: 90%; height: auto; border: 1px solid #ccc;">
+  </div>
   <div id="setup">
     <label for="numPlayers">Number of players (2–4): </label>
     <select id="numPlayers">
